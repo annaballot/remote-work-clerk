@@ -25,6 +25,8 @@ unsigned long currentTime;
 unsigned long currentDateTime;
 int hr;
 int mn;
+int ledColour;
+int timeSinceMove;
 
 void setup() {
   // put your setup code here, to run once:
@@ -35,22 +37,9 @@ void setup() {
   carrier.begin();
 
 
+getCurrentTime();
 
-
-  currentDateTime = WiFi.getTime();
-  currentTime = currentDateTime % 86400;  //remainder operation - means current time only contains time portion of current datetime (divisor is number of seconds in 1 day)
-  hr = currentTime/3600;
-  mn = (currentTime % 3600)/60;
-
-Serial.println("currentDateTime");
-Serial.println(currentDateTime);
-Serial.println("currentTime");
-Serial.println(currentTime);
-Serial.println("hr");
-Serial.println(hr);
-Serial.println("mn");
-Serial.println(mn);
-
+LEDoff();
 
   carrier.display.setRotation(0);
   delay(1000);
@@ -60,7 +49,7 @@ Serial.println(mn);
 void loop() {
 
 currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
-
+timeSinceMove = currentMillis/1000 - lastMoved;
 
 
 // read the IMU values
@@ -68,15 +57,27 @@ currentMillis = millis();  //get the current "time" (actually the number of mill
 
     if (Gy > 100 || Gy < -100) {  //update this, not v accurate
       shake_event = 1;
-      Serial.println(shake_event);
+      LEDoff();
+      Serial.println("Intruder");
       writeThinkSpeak();
-      lastMoved = millis()/1000;
+      lastMoved = currentMillis/1000;
+      
       //delays for 15 seconds before  continuing with the loop
        delay(15000);
        //reset shake event
         shake_event = 0;
     }
  
+
+
+Serial.println("Time Since Moved");
+ Serial.println(timeSinceMove);
+
+if (timeSinceMove > 60) {
+
+LEDon();
+
+}
 
 // timeSinceMovement = millis() - lastMoved;
 //  Serial.println(timeSinceMovement);
@@ -135,15 +136,34 @@ void setupWiFi() {
 
 
 void getCurrentTime() {
+
+
   currentDateTime = WiFi.getTime();
   currentTime = currentDateTime % 86400;  //remainder operation - means current time only contains time portion of current datetime (divisor is number of seconds in 1 day)
-  hr = currentTime/3600;
+  hr = currentTime/3600; //divide current time by # seconds in an hour to get the hour of the day, as this is an integer, it will ignore decimel places, and this will be handled by the mn variable
+  mn = (currentTime % 3600)/60; //remainder of seconds after the hour is taken away
 
-Serial.println("currentDateTime");
-Serial.println(currentDateTime);
+// Serial.println("currentDateTime");
+// Serial.println(currentDateTime);
 Serial.println("currentTime");
 Serial.println(currentTime);
 Serial.println("hr");
 Serial.println(hr);
+Serial.println("mn");
+Serial.println(mn);
 
+}
+
+
+void LEDon() {
+    ledColour = carrier.leds.Color(200, 197, 45);
+    carrier.leds.fill(ledColour);
+  carrier.leds.show();
+
+}
+
+
+void LEDoff() {
+  carrier.leds.fill(0); 			//Set all LEDs to no colour(off)
+  carrier.leds.show(); 				//update the new state of the LEDs 
 }
