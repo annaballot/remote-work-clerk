@@ -5,13 +5,13 @@
 MKRIoTCarrier carrier;
 
 unsigned long myChannelNumber = SECRET_CH_ID;
-const char * myWriteAPIKey = SECRET_WRITE_APIKEY;
+const char* myWriteAPIKey = SECRET_WRITE_APIKEY;
 
-char ssid[] = WIFI_NAME;        // your network SSID (name)
-char pass[] = WIFI_PASSWORD;    // your network password (use for WPA, or use as key for WEP)
+char ssid[] = WIFI_NAME;      // your network SSID (name)
+char pass[] = WIFI_PASSWORD;  // your network password (use for WPA, or use as key for WEP)
 int status = WL_IDLE_STATUS;
 const char* mqttServer = "mqtt3.thingspeak.com";  // Replace with your MQTT Broker address
-const int mqttPort = 1883;                  // typical MQTT port
+const int mqttPort = 1883;                        // typical MQTT port
 
 WiFiClient wifiClient;
 
@@ -27,19 +27,24 @@ int hr;
 int mn;
 int ledColour;
 int timeSinceMove;
+int startTime = 9;
+int endTime = 17;
+const int sound_sensor = A0;
+int soundValue = 0;
+int soundNotification = 0;
 
 void setup() {
   // put your setup code here, to run once:
-  Serial.begin(9600); 
+  Serial.begin(9600);
   carrier.withCase();
   setupWiFi();
   ThingSpeak.begin(wifiClient);
   carrier.begin();
 
 
-getCurrentTime();
+  getCurrentTime();
 
-LEDoff();
+  LEDoff();
 
   carrier.display.setRotation(0);
   delay(1000);
@@ -48,40 +53,76 @@ LEDoff();
 
 void loop() {
 
-currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
-timeSinceMove = currentMillis/1000 - lastMoved;
+
+//check if it's between 8-5, otherwise don't run the next block
+//put this back in and only check every minute
+// if ((hr >= startTime) && (hr <= endTime)) {
+//  Serial.println("Within Time - Monitoring");
+// }
+// else {
+//   Serial.println("Outside Monitoring Times");
+// }
 
 
-// read the IMU values
+  currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
+  timeSinceMove = currentMillis / 1000 - lastMoved;
+
+
+  // read the IMU values
   carrier.IMUmodule.readGyroscope(Gx, Gy, Gz);
 
-    if (Gy > 100 || Gy < -100) {  //update this, not v accurate
-      shake_event = 1;
-      LEDoff();
-      Serial.println("Intruder");
-      writeThinkSpeak();
-      lastMoved = currentMillis/1000;
-      
-      //delays for 15 seconds before  continuing with the loop
-       delay(15000);
-       //reset shake event
-        shake_event = 0;
-    }
- 
+  if (Gy > 100 || Gy < -100) {  //update this, not v accurate
+    shake_event = 1;
+    LEDoff();
+    Serial.println("Intruder");
+    writeThinkSpeak();
+    lastMoved = currentMillis / 1000;
+
+    //delays for 15 seconds before  continuing with the loop
+    delay(15000);
+    //reset shake event
+    shake_event = 0;
+  }
 
 
-Serial.println("Time Since Moved");
- Serial.println(timeSinceMove);
 
-if (timeSinceMove > 60) {
+  // Serial.println("Time Since Moved");
+  // Serial.println(timeSinceMove);
 
-LEDon();
+  if (timeSinceMove > 60) {
+//check why this is coming on too soon after the first iteration
+    LEDon();
+  }
 
+
+soundValue = analogRead(sound_sensor);
+
+  if (soundValue > 450) { 
+    // Serial.println("High");
+    Serial.println(soundValue);
+    soundThingSpeak();
+    delay(10000); //delay listening to any more sound or events for 10 seconds
+  }
+
+
+  // timeSinceMovement = millis() - lastMoved;
+  //  Serial.println(timeSinceMovement);
 }
 
-// timeSinceMovement = millis() - lastMoved;
-//  Serial.println(timeSinceMovement);
 
+
+void soundThingSpeak() {
+  soundNotification = 1;
+ ThingSpeak.setField(3, soundNotification);
+
+   int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+  if (x == 200) {
+    Serial.println("Channel update successful.");
+  } else {
+    Serial.println("Problem updating channel. HTTP error code " + String(x));
+  }
+
+ soundNotification = 0; //reset variable
 
 }
 
@@ -92,32 +133,27 @@ void writeThinkSpeak() {
   // read the sensor values
   float temperature = carrier.Env.readTemperature();
 
-    // set the fields with the values
+  // set the fields with the values
   ThingSpeak.setField(1, temperature);
   ThingSpeak.setField(2, shake_event);
   int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
-   if(x == 200){
+  if (x == 200) {
     Serial.println("Channel update successful.");
-  }
-  else{
+  } else {
     Serial.println("Problem updating channel. HTTP error code " + String(x));
   }
-
-
-
-
-
 }
 
 
 
 
 void setupWiFi() {
- // check for the WiFi module:
+  // check for the WiFi module:
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println("Communication with WiFi module failed!");
     // don't continue
-    while (true);
+    while (true)
+      ;
   }
 
   // attempt to connect to WiFi network:
@@ -136,34 +172,37 @@ void setupWiFi() {
 
 
 void getCurrentTime() {
-
-
   currentDateTime = WiFi.getTime();
   currentTime = currentDateTime % 86400;  //remainder operation - means current time only contains time portion of current datetime (divisor is number of seconds in 1 day)
-  hr = currentTime/3600; //divide current time by # seconds in an hour to get the hour of the day, as this is an integer, it will ignore decimel places, and this will be handled by the mn variable
-  mn = (currentTime % 3600)/60; //remainder of seconds after the hour is taken away
+  hr = currentTime / 3600;                //divide current time by # seconds in an hour to get the hour of the day, as this is an integer, it will ignore decimel places, and this will be handled by the mn variable
+  mn = (currentTime % 3600) / 60;         //remainder of seconds after the hour is taken away
 
-// Serial.println("currentDateTime");
-// Serial.println(currentDateTime);
-Serial.println("currentTime");
-Serial.println(currentTime);
-Serial.println("hr");
-Serial.println(hr);
-Serial.println("mn");
-Serial.println(mn);
-
+  // Serial.println("currentDateTime");
+  // Serial.println(currentDateTime);
+  Serial.println("currentTime");
+  Serial.println(currentTime);
+  Serial.println("hr");
+  Serial.println(hr);
+  Serial.println("mn");
+  Serial.println(mn);
 }
 
 
 void LEDon() {
-    ledColour = carrier.leds.Color(200, 197, 45);
-    carrier.leds.fill(ledColour);
-  carrier.leds.show();
-
+  //temperarily comment below while testing other things
+  // ledColour = carrier.leds.Color(200, 197, 45);
+  // carrier.leds.fill(ledColour);
+  // carrier.leds.show();
 }
 
 
 void LEDoff() {
-  carrier.leds.fill(0); 			//Set all LEDs to no colour(off)
-  carrier.leds.show(); 				//update the new state of the LEDs 
+  carrier.leds.fill(0);  //Set all LEDs to no colour(off)
+  carrier.leds.show();   //update the new state of the LEDs
+}
+
+
+void resetSound() {
+
+
 }
