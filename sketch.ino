@@ -5,6 +5,7 @@
 #include <Arduino_MKRIoTCarrier.h>
 #include <ThingSpeak.h>
 #include "config.h"
+#include <Arduino_APDS9960.h>
 
 MKRIoTCarrier carrier;
 
@@ -37,6 +38,8 @@ int endTime = 17;
 const int sound_sensor = A0;
 int soundValue = 0;
 int soundNotification = 0;
+int soundMonitoring = 0;
+int lastSoundMonitoring = 0;
 
 const long mySQLinterval = 10000;  // interval at which to upload average sound data to mySQL (milliseconds)
 
@@ -61,21 +64,17 @@ float soundChange;
 
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
-  carrier.withCase();
   setupWiFi();
   ThingSpeak.begin(wifiClient);
   carrier.begin();
-
-
   getCurrentTime();
-
   LEDoff();
-
-  carrier.display.setRotation(0);
+  if (!APDS.begin()) {
+    Serial.println("Error initializing APDS-9960 sensor!");
+  }
   delay(1000);
-  Serial.println("Start of Monitoring");
+  Serial.println("End of Setup");
 }
 
 void loop() {
@@ -94,35 +93,65 @@ void loop() {
   currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
   soundValue = analogRead(sound_sensor);
 
-  // if ((currentMillis % 10000) == 0) {
-  //   Serial.println(currentMillis);
-  // Serial.println(currentMillis % 10000);
-  // }
 
 
-  if (currentMillis < 60000) {
+    // if (currentMillis < 60000) {
+    // Serial.println(currentMillis);
+    // }
 
-    Serial.println(currentMillis);
 
 
-  } else {
-    // read the IMU values
-    carrier.IMUmodule.readGyroscope(Gx, Gy, Gz);
+// Serial.print("gesture available:  " );
+// Serial.print(APDS.gestureAvailable());
+// Serial.print("        read gesture: ");
+// Serial.print(APDS.readGesture());
+// Serial.println();
+// delay(100);
 
-    if (Gy > 100 || Gy < -100) {  //update this, not v accurate
-      shake_event = 1;
-      Serial.println("Intruder");
-      writeThinkSpeak();
-      lastMoved = currentMillis / 1000;
-      LEDoff();
 
-      //delays for 15 seconds before  continuing with the loop
-      delay(15000);
-      //reset shake event
-      shake_event = 0;
+  if (APDS.gestureAvailable()) {
+    // a gesture was detected, read and print to Serial Monitor
+    int gesture = APDS.readGesture();
+
+    if (gesture == GESTURE_UP || gesture == GESTURE_DOWN || gesture == GESTURE_LEFT || gesture == GESTURE_RIGHT) {
+      if ( currentMillis < 60000 ) {
+        Serial.println("Delay of 60sec before sound monitor works");
+      } else {
+      // Serial.println("gesture detected");
+      controlSoundMonitoring();
     }
+      delay(3000);
 
-    timeSinceMove = currentMillis / 1000 - lastMoved;
+    }
+  }
+
+ 
+  if (lastSoundMonitoring == 0 && soundMonitoring == 1) {
+    Serial.println("Start Monitoring Sound");
+  }
+
+  if (lastSoundMonitoring == 1 && soundMonitoring == 0) {
+    Serial.println("End Monitoring Sound");
+  }
+ lastSoundMonitoring = soundMonitoring;
+  if (soundMonitoring == 1) {
+    // // read the IMU values
+    // carrier.IMUmodule.readGyroscope(Gx, Gy, Gz);
+
+    // if (Gy > 100 || Gy < -100) {  //update this, not v accurate
+    //   shake_event = 1;
+    //   Serial.println("Intruder");
+    //   writeThinkSpeak();
+    //   lastMoved = currentMillis / 1000;
+    //   LEDoff();
+
+    //   //delays for 15 seconds before  continuing with the loop
+    //   delay(15000);
+    //   //reset shake event
+    //   shake_event = 0;
+    // }
+
+    // timeSinceMove = currentMillis / 1000 - lastMoved;
 
     // Serial.println("Time Since Moved");
     // Serial.println(timeSinceMove);
@@ -132,7 +161,6 @@ void loop() {
     // if (timeSinceMove > 60) {
     //   LEDon();
     // }
-
 
 
     soundValueTotal = soundValueTotal + soundValue;
@@ -152,12 +180,14 @@ void loop() {
       Serial.print(soundChange);
       Serial.println();
 
-      //write to Thinkspeak which triggers Alexa
-      soundThingSpeak();
-      delay(15000); //delay listening to any more sound or events for 15 seconds
-
       //Turn LED On
       LEDon();
+      //write to Thinkspeak which triggers Alexa
+      soundThingSpeak();
+      delay(15000);  //delay listening to any more sound or events for 15 seconds
+
+      //Turn LED Off
+      LEDoff();
     }
 
 
@@ -172,7 +202,7 @@ void loop() {
 
     //write data to mySQL via php
     if (currentMillis - previousMillis >= mySQLinterval) {
-      previousMillis = currentMillis; // save the last time you saved data
+      previousMillis = currentMillis;  // save the last time you saved data
       writeToMySQL();
     }
   }
@@ -300,4 +330,12 @@ void LEDoff() {
 
 
 void resetSound() {
+}
+
+void controlSoundMonitoring() {
+  if (soundMonitoring == 0) {
+    soundMonitoring = 1;
+  } else if (soundMonitoring == 1) {
+    soundMonitoring = 0;
+  }
 }
