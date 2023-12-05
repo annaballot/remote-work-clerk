@@ -56,7 +56,6 @@ String PATH_NAME = "/workClerk/insert_readings2.php";
 String queryString = "?sound=28.2";
 
 
-
 int soundValueTotal = 0;
 int numValues = 0;
 int soundAvg;
@@ -80,34 +79,8 @@ void setup() {
 void loop() {
 
 
-  //check if it's between 8-5, otherwise don't run the next block
-  //put this back in and only check every minute
-  // if ((hr >= startTime) && (hr <= endTime)) {
-  //  Serial.println("Within Time - Monitoring");
-  // }
-  // else {
-  //   Serial.println("Outside Monitoring Times");
-  // }
-
-
   currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
   soundValue = analogRead(sound_sensor);
-
-
-
-    // if (currentMillis < 60000) {
-    // Serial.println(currentMillis);
-    // }
-
-
-
-// Serial.print("gesture available:  " );
-// Serial.print(APDS.gestureAvailable());
-// Serial.print("        read gesture: ");
-// Serial.print(APDS.readGesture());
-// Serial.println();
-// delay(100);
-
 
   if (APDS.gestureAvailable()) {
     // a gesture was detected, read and print to Serial Monitor
@@ -117,11 +90,9 @@ void loop() {
       if ( currentMillis < 60000 ) {
         Serial.println("Delay of 60sec before sound monitor works");
       } else {
-      // Serial.println("gesture detected");
       controlSoundMonitoring();
     }
       delay(3000);
-
     }
   }
 
@@ -135,34 +106,7 @@ void loop() {
   }
  lastSoundMonitoring = soundMonitoring;
   if (soundMonitoring == 1) {
-    // // read the IMU values
-    // carrier.IMUmodule.readGyroscope(Gx, Gy, Gz);
-
-    // if (Gy > 100 || Gy < -100) {  //update this, not v accurate
-    //   shake_event = 1;
-    //   Serial.println("Intruder");
-    //   writeThinkSpeak();
-    //   lastMoved = currentMillis / 1000;
-    //   LEDoff();
-
-    //   //delays for 15 seconds before  continuing with the loop
-    //   delay(15000);
-    //   //reset shake event
-    //   shake_event = 0;
-    // }
-
-    // timeSinceMove = currentMillis / 1000 - lastMoved;
-
-    // Serial.println("Time Since Moved");
-    // Serial.println(timeSinceMove);
-
-
-    //only commented for testing
-    // if (timeSinceMove > 60) {
-    //   LEDon();
-    // }
-
-
+  
     soundValueTotal = soundValueTotal + soundValue;
     numValues = numValues + 1;
     soundAvg = soundValueTotal / numValues;
@@ -179,26 +123,11 @@ void loop() {
       Serial.print("         percent: ");
       Serial.print(soundChange);
       Serial.println();
-
-      //Turn LED On
-      LEDon();
-      //write to Thinkspeak which triggers Alexa
-      soundThingSpeak();
+      
+      soundThingSpeak(); //write to Thinkspeak which triggers Alexa
       delay(15000);  //delay listening to any more sound or events for 15 seconds
 
-      //Turn LED Off
-      LEDoff();
     }
-
-
-    //only commented below for testing
-    // if (soundValue > 450) {
-    //   Serial.println(soundValue);
-    //   soundThingSpeak();
-    //   delay(60000); //delay listening to any more sound or events for 10 seconds
-    // }
-
-
 
     //write data to mySQL via php
     if (currentMillis - previousMillis >= mySQLinterval) {
@@ -335,7 +264,9 @@ void resetSound() {
 void controlSoundMonitoring() {
   if (soundMonitoring == 0) {
     soundMonitoring = 1;
+    LEDon();
   } else if (soundMonitoring == 1) {
     soundMonitoring = 0;
+    LEDoff();
   }
 }
