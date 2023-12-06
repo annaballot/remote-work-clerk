@@ -1,13 +1,23 @@
 // Needs adjustment time for sound sensor
 
+//Blynk Device Info
+#define BLYNK_TEMPLATE_ID "TMPL4J8QUatXs"
+#define BLYNK_TEMPLATE_NAME "HDipIOTAssignmentTemplate"
+#define BLYNK_AUTH_TOKEN "z8Xpu35yseI6mcEpPx0QLJ6UZr--6_x8"
+
 
 #include <WiFiNINA.h>
 #include <Arduino_MKRIoTCarrier.h>
 #include <ThingSpeak.h>
 #include "config.h"
 #include <Arduino_APDS9960.h>
+#include <BlynkSimpleWifi.h>
+
+
 
 MKRIoTCarrier carrier;
+
+BlynkTimer timer;
 
 unsigned long myChannelNumber = SECRET_CH_ID;
 const char* myWriteAPIKey = SECRET_WRITE_APIKEY;
@@ -60,6 +70,10 @@ int soundValueTotal = 0;
 int numValues = 0;
 int soundAvg;
 float soundChange;
+const float tempThreshold = 20.0;
+float temperature;
+int tempWarning = 0;
+int lastTempWarning = 0;
 
 
 void setup() {
@@ -72,6 +86,11 @@ void setup() {
   if (!APDS.begin()) {
     Serial.println("Error initializing APDS-9960 sensor!");
   }
+
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+  // Setup a function to be called every second
+  timer.setInterval(2000L, writeBlynkTemp);
+
   delay(1000);
   Serial.println("End of Setup");
 }
@@ -81,28 +100,37 @@ void loop() {
 
   currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
   soundValue = analogRead(sound_sensor);
+  temperature = carrier.Env.readTemperature();
 
   if (APDS.gestureAvailable()) {
     // a gesture was detected, read and print to Serial Monitor
     int gesture = APDS.readGesture();
 
     if (gesture == GESTURE_UP || gesture == GESTURE_DOWN || gesture == GESTURE_LEFT || gesture == GESTURE_RIGHT) {
-      if ( currentMillis < 60000 ) {
-        Serial.println("Delay of 60sec before sound monitor works");
-      } else {
+      // if ( currentMillis < 60000 ) {
+      //   Serial.println("Delay of 60sec before sound monitor works");
+      // } else {
       controlSoundMonitoring();
-    }
-      delay(3000);
+    // }
+      
     }
   }
 
- 
+ Blynk.run();
+ timer.run();
+
   if (lastSoundMonitoring == 0 && soundMonitoring == 1) {
     Serial.println("Start Monitoring Sound");
+    LEDon();
+    writeBlynkSoundMonitor();
+    delay(3000);
   }
 
   if (lastSoundMonitoring == 1 && soundMonitoring == 0) {
     Serial.println("End Monitoring Sound");
+    LEDoff();
+    writeBlynkSoundMonitor();
+    delay(3000);
   }
  lastSoundMonitoring = soundMonitoring;
   if (soundMonitoring == 1) {
@@ -113,30 +141,74 @@ void loop() {
     soundChange = round(((soundValue - soundAvg) * 100) / soundAvg) / 100;
 
     //if the sound change is 10% more than the average, trigger
-    if (soundChange > 0.20) {
+    // if (soundChange > 0.20) {
 
-      //print some values
-      Serial.print("sound: ");
-      Serial.print(soundValue);
-      Serial.print("         avg: ");
-      Serial.print(soundAvg);
-      Serial.print("         percent: ");
-      Serial.print(soundChange);
-      Serial.println();
+    //   //print some values
+    //   Serial.print("sound: ");
+    //   Serial.print(soundValue);
+    //   Serial.print("         avg: ");
+    //   Serial.print(soundAvg);
+    //   Serial.print("         percent: ");
+    //   Serial.print(soundChange);
+    //   Serial.println();
       
-      soundThingSpeak(); //write to Thinkspeak which triggers Alexa
-      delay(15000);  //delay listening to any more sound or events for 15 seconds
+    //   soundThingSpeak(); //write to Thinkspeak which triggers Alexa
+    //   delay(15000);  //delay listening to any more sound or events for 15 seconds
 
-    }
+    // }
 
-    //write data to mySQL via php
-    if (currentMillis - previousMillis >= mySQLinterval) {
-      previousMillis = currentMillis;  // save the last time you saved data
-      writeToMySQL();
-    }
+    // //write data to mySQL via php
+    // if (currentMillis - previousMillis >= mySQLinterval) {
+    //   previousMillis = currentMillis;  // save the last time you saved data
+    //   writeToMySQL();
+    // }
   }
+
+
+
+
+//Check if there's been a change in temperature warning
+checkTemperature();
+
+
+    if (lastTempWarning == 0 && tempWarning == 1) {
+    Serial.println("Temperature above threshold");
+    carrier.display.fillScreen(0xF800);
+    delay(3000);
+  }
+
+  if (lastTempWarning == 1 && tempWarning == 0) {
+    Serial.println("Temperature below threshold");
+    carrier.display.fillScreen(0x0000);
+    delay(3000);
+  }
+ lastTempWarning = tempWarning;
 }
 
+
+
+// This function is called every time the Virtual Pin 0 state changes
+BLYNK_WRITE(V0) {
+  // Set incoming value from pin V0 to a variable
+  soundMonitoring = param.asInt();
+  // if (lightsOn) {
+  //   carrier.display.fillScreen(0xF800);
+  // } else {
+  //   carrier.display.fillScreen(0x07E0);
+  // }
+}
+
+// This function sends temperature every second to Virtual Pin 1.
+void writeBlynkSoundMonitor() {
+  // Don't send more that 10 values per second.
+  // float temperature = carrier.Env.readTemperature();
+  Blynk.virtualWrite(V0, soundMonitoring);
+}
+
+void writeBlynkTemp() {
+  // Don't send more that 10 values per second.
+  Blynk.virtualWrite(V1, temperature);
+}
 
 
 void writeToMySQL() {
@@ -258,15 +330,23 @@ void LEDoff() {
 }
 
 
-void resetSound() {
-}
+// void resetSound() {
+// }
 
 void controlSoundMonitoring() {
   if (soundMonitoring == 0) {
     soundMonitoring = 1;
-    LEDon();
   } else if (soundMonitoring == 1) {
     soundMonitoring = 0;
-    LEDoff();
   }
+}
+
+void checkTemperature() {
+
+if ( temperature > tempThreshold ) {
+  tempWarning = 1;
+} else {
+  tempWarning = 0;
+}
+
 }
