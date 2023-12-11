@@ -12,7 +12,7 @@
 #include "config.h"
 #include <Arduino_APDS9960.h>
 #include <BlynkSimpleWifi.h>
-
+#include <ArduinoHttpClient.h>
 
 
 MKRIoTCarrier carrier;
@@ -36,6 +36,8 @@ unsigned long lastMoved = 0;
 unsigned long timeSinceMovement = 0;
 unsigned long currentMillis;
 unsigned long previousMillis = 0;
+unsigned long previousMillisTemp = 0;
+
 const unsigned long period = 1000;
 unsigned long currentTime;
 unsigned long currentDateTime;
@@ -51,7 +53,9 @@ int soundNotification = 0;
 int soundMonitoring = 0;
 int lastSoundMonitoring = 0;
 
-const long mySQLinterval = 10000;  // interval at which to upload average sound data to mySQL (milliseconds)
+const long mySQLinterval = 60000;  // interval at which to upload average sound data to mySQL (milliseconds)
+const long tempInterval = 5000;  // interval at which to read and analyse temperature data (milliseconds)
+
 
 
 //find out what this is for. PHP - my sql. have not updated it.
@@ -62,8 +66,15 @@ byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 int HTTP_PORT = 80;
 String HTTP_METHOD = "GET";
 char HOST_NAME[] = "192.168.0.52";  // change to your PC's IP address
-String PATH_NAME = "/workClerk/insert_readings2.php";
-String queryString = "?sound=28.2";
+
+String insertSoundValuePath = "/workClerk/insert_sound_readings.php";
+String insertTemperaturePath = "/workClerk/insert_temperature_readings.php";
+String insertSoundMonitoringPath = "/workClerk/insert_sound_monitoring_readings.php";
+
+String readPath = "/workClerk/get_readings4.php";
+// String queryString = "?sound=28.2";
+
+HttpClient httpclient = HttpClient(wifiClient, HOST_NAME, HTTP_PORT);
 
 
 int soundValueTotal = 0;
@@ -95,12 +106,32 @@ void setup() {
   Serial.println("End of Setup");
 }
 
+
+
+//***************************************************************************************************************************************************************************
+//***************************************************************************************************************************************************************************
+
+//                LOOP
+
+//***************************************************************************************************************************************************************************
+//***************************************************************************************************************************************************************************
+
 void loop() {
 
 
   currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
   soundValue = analogRead(sound_sensor);
-  temperature = carrier.Env.readTemperature();
+
+
+   //write data to mySQL via php
+  if (currentMillis - previousMillisTemp >= tempInterval) {
+    previousMillisTemp = currentMillis;  // save the last time you saved data
+    temperature = carrier.Env.readTemperature();
+  }
+  
+
+  Blynk.run();
+   timer.run();
 
   if (APDS.gestureAvailable()) {
     // a gesture was detected, read and print to Serial Monitor
@@ -111,13 +142,9 @@ void loop() {
       //   Serial.println("Delay of 60sec before sound monitor works");
       // } else {
       controlSoundMonitoring();
-    // }
-      
+      // }
     }
   }
-
- Blynk.run();
- timer.run();
 
   if (lastSoundMonitoring == 0 && soundMonitoring == 1) {
     Serial.println("Start Monitoring Sound");
@@ -132,46 +159,49 @@ void loop() {
     writeBlynkSoundMonitor();
     delay(3000);
   }
- lastSoundMonitoring = soundMonitoring;
+  lastSoundMonitoring = soundMonitoring;
   if (soundMonitoring == 1) {
-  
-    soundValueTotal = soundValueTotal + soundValue;
-    numValues = numValues + 1;
-    soundAvg = soundValueTotal / numValues;
-    soundChange = round(((soundValue - soundAvg) * 100) / soundAvg) / 100;
 
-    //if the sound change is 10% more than the average, trigger
-    // if (soundChange > 0.20) {
+  soundValueTotal = soundValueTotal + soundValue;
+  numValues = numValues + 1;
+  soundAvg = soundValueTotal / numValues;
+  soundChange = round(((soundValue - soundAvg) * 100) / soundAvg) / 100;
 
-    //   //print some values
-    //   Serial.print("sound: ");
-    //   Serial.print(soundValue);
-    //   Serial.print("         avg: ");
-    //   Serial.print(soundAvg);
-    //   Serial.print("         percent: ");
-    //   Serial.print(soundChange);
-    //   Serial.println();
-      
-    //   soundThingSpeak(); //write to Thinkspeak which triggers Alexa
-    //   delay(15000);  //delay listening to any more sound or events for 15 seconds
+  //print some values
+  // Serial.print("sound: ");
+  // Serial.print(soundValue);
+  // Serial.print("         avg: ");
+  // Serial.print(soundAvg);
+  // Serial.print("         percent: ");
+  // Serial.print(soundChange);
+  // Serial.println();
 
-    // }
 
-    // //write data to mySQL via php
-    // if (currentMillis - previousMillis >= mySQLinterval) {
-    //   previousMillis = currentMillis;  // save the last time you saved data
-    //   writeToMySQL();
-    // }
+  //if the sound change is 10% more than the average, trigger
+  if (soundChange > 0.20) {
+
+    soundThingSpeak(); //write to Thinkspeak which triggers Alexa
+    delay(15000);  //delay listening to any more sound or events for 15 seconds
+
   }
 
+  //write data to mySQL via php
+  if (currentMillis - previousMillis >= mySQLinterval) {
+    previousMillis = currentMillis;  // save the last time you saved data
+    writeToMySQL("insertSoundValuePath");
+    // writeToMySQL();
+  }
+
+  }
+
+// Decide how often or why I want to do this
+  // readMySQLData();
 
 
+  //Check if there's been a change in temperature warning
+  checkTemperature();
 
-//Check if there's been a change in temperature warning
-checkTemperature();
-
-
-    if (lastTempWarning == 0 && tempWarning == 1) {
+  if (lastTempWarning == 0 && tempWarning == 1) {
     Serial.println("Temperature above threshold");
     carrier.display.fillScreen(0xF800);
     delay(3000);
@@ -182,26 +212,26 @@ checkTemperature();
     carrier.display.fillScreen(0x0000);
     delay(3000);
   }
- lastTempWarning = tempWarning;
+  lastTempWarning = tempWarning;
 }
 
 
+//***************************************************************************************************************************************************************************
+//***************************************************************************************************************************************************************************
+
+//                FUNCTIONS
+
+//***************************************************************************************************************************************************************************
+//***************************************************************************************************************************************************************************
 
 // This function is called every time the Virtual Pin 0 state changes
 BLYNK_WRITE(V0) {
-  // Set incoming value from pin V0 to a variable
   soundMonitoring = param.asInt();
-  // if (lightsOn) {
-  //   carrier.display.fillScreen(0xF800);
-  // } else {
-  //   carrier.display.fillScreen(0x07E0);
-  // }
 }
 
 // This function sends temperature every second to Virtual Pin 1.
 void writeBlynkSoundMonitor() {
   // Don't send more that 10 values per second.
-  // float temperature = carrier.Env.readTemperature();
   Blynk.virtualWrite(V0, soundMonitoring);
 }
 
@@ -211,7 +241,27 @@ void writeBlynkTemp() {
 }
 
 
-void writeToMySQL() {
+void writeToMySQL( String writeType ) {
+
+
+  // sound_value
+  // sound_monitoring
+  // temperature_value
+  // insertSoundValuePath
+  // insertTemperaturePath
+  // insertSoundMonitoringPath
+
+
+
+if ( writeType == "insertSoundValuePath") {
+  Serial.println("insertSoundValuePath");
+}
+else if ( writeType == "insertTemperaturePath") {
+  Serial.println("insertTemperaturePath");
+}
+else if ( writeType == "insertSoundMonitoringPath") {
+  Serial.println("insertSoundMonitoringPath");
+}
 
   // connect to web server on port 80:
   if (wifiClient.connect(HOST_NAME, HTTP_PORT)) {
@@ -219,7 +269,7 @@ void writeToMySQL() {
     Serial.println("Connected to server");
     // make a HTTP request:
     // send HTTP header
-    wifiClient.println(HTTP_METHOD + " " + PATH_NAME + "?sound=" + soundAvg + " HTTP/1.1");
+    wifiClient.println(HTTP_METHOD + " " + insertSoundValuePath + "?sound=" + soundAvg + " HTTP/1.1");
     wifiClient.println("Host: " + String(HOST_NAME));
     wifiClient.println("Connection: close");
     wifiClient.println();  // end HTTP header
@@ -241,40 +291,27 @@ void writeToMySQL() {
   }
 }
 
+void readMySQLData() {
+
+  httpclient.get(readPath);
+
+  // read the response
+  String response = httpclient.responseBody();
+  Serial.println("MySQL Response:");
+  Serial.println(response);
+}
 
 void soundThingSpeak() {
   soundNotification = 1;
   ThingSpeak.setField(3, soundNotification);
-
   int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
   if (x == 200) {
     Serial.println("Channel update successful.");
   } else {
     Serial.println("Problem updating channel. HTTP error code " + String(x));
   }
-
   soundNotification = 0;  //reset variable
 }
-
-
-
-void writeThinkSpeak() {
-
-  // read the sensor values
-  float temperature = carrier.Env.readTemperature();
-
-  // set the fields with the values
-  ThingSpeak.setField(1, temperature);
-  ThingSpeak.setField(2, shake_event);
-  int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
-  if (x == 200) {
-    Serial.println("Channel update successful.");
-  } else {
-    Serial.println("Problem updating channel. HTTP error code " + String(x));
-  }
-}
-
-
 
 
 void setupWiFi() {
@@ -317,7 +354,6 @@ void getCurrentTime() {
 
 
 void LEDon() {
-  //temperarily comment below while testing other things
   ledColour = carrier.leds.Color(200, 197, 45);
   carrier.leds.fill(ledColour);
   carrier.leds.show();
@@ -330,9 +366,6 @@ void LEDoff() {
 }
 
 
-// void resetSound() {
-// }
-
 void controlSoundMonitoring() {
   if (soundMonitoring == 0) {
     soundMonitoring = 1;
@@ -343,10 +376,9 @@ void controlSoundMonitoring() {
 
 void checkTemperature() {
 
-if ( temperature > tempThreshold ) {
-  tempWarning = 1;
-} else {
-  tempWarning = 0;
-}
-
+  if (temperature > tempThreshold) {
+    tempWarning = 1;
+  } else {
+    tempWarning = 0;
+  }
 }
