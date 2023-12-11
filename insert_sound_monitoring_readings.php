@@ -1,7 +1,7 @@
 <?php
 
-if(isset($_GET["sound_monitoring"])) {
-   $sound_monitoring = $_GET["sound_monitoring"]; // get sound value from HTTP GET
+if(isset($_GET["monitoring_value"])) {
+   $monitoring_value = $_GET["monitoring_value"]; // get sound value from HTTP GET
 
    $servername = "localhost";
    $username = "Arduino";
@@ -15,7 +15,7 @@ if(isset($_GET["sound_monitoring"])) {
       die("Connection failed: " . $conn->connect_error);
    }
 
-   $sql = "INSERT INTO  tbl_sound_readings (insertDateTime, sound_monitoring) VALUES (now(), $sound_monitoring)";
+   $sql = "INSERT INTO  tbl_sound_monitoring (insertDateTime, monitoring_value) VALUES (now(), $monitoring_value)";
 
    if ($conn->query($sql) === TRUE) {
       echo "New record created successfully";

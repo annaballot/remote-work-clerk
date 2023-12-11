@@ -54,7 +54,7 @@ int soundMonitoring = 0;
 int lastSoundMonitoring = 0;
 
 const long mySQLinterval = 60000;  // interval at which to upload average sound data to mySQL (milliseconds)
-const long tempInterval = 5000;  // interval at which to read and analyse temperature data (milliseconds)
+const long tempInterval = 5000;    // interval at which to read and analyse temperature data (milliseconds)
 
 
 
@@ -123,15 +123,16 @@ void loop() {
   soundValue = analogRead(sound_sensor);
 
 
-   //write data to mySQL via php
+  //write data to mySQL via php
   if (currentMillis - previousMillisTemp >= tempInterval) {
     previousMillisTemp = currentMillis;  // save the last time you saved data
     temperature = carrier.Env.readTemperature();
+    writeToMySQL("insertTemperaturePath");
   }
-  
+
 
   Blynk.run();
-   timer.run();
+  timer.run();
 
   if (APDS.gestureAvailable()) {
     // a gesture was detected, read and print to Serial Monitor
@@ -142,6 +143,7 @@ void loop() {
       //   Serial.println("Delay of 60sec before sound monitor works");
       // } else {
       controlSoundMonitoring();
+      writeToMySQL("insertSoundMonitoringPath");
       // }
     }
   }
@@ -162,39 +164,37 @@ void loop() {
   lastSoundMonitoring = soundMonitoring;
   if (soundMonitoring == 1) {
 
-  soundValueTotal = soundValueTotal + soundValue;
-  numValues = numValues + 1;
-  soundAvg = soundValueTotal / numValues;
-  soundChange = round(((soundValue - soundAvg) * 100) / soundAvg) / 100;
+    soundValueTotal = soundValueTotal + soundValue;
+    numValues = numValues + 1;
+    soundAvg = soundValueTotal / numValues;
+    soundChange = round(((soundValue - soundAvg) * 100) / soundAvg) / 100;
 
-  //print some values
-  // Serial.print("sound: ");
-  // Serial.print(soundValue);
-  // Serial.print("         avg: ");
-  // Serial.print(soundAvg);
-  // Serial.print("         percent: ");
-  // Serial.print(soundChange);
-  // Serial.println();
+    //print some values
+    // Serial.print("sound: ");
+    // Serial.print(soundValue);
+    // Serial.print("         avg: ");
+    // Serial.print(soundAvg);
+    // Serial.print("         percent: ");
+    // Serial.print(soundChange);
+    // Serial.println();
 
 
-  //if the sound change is 10% more than the average, trigger
-  if (soundChange > 0.20) {
+    //if the sound change is 10% more than the average, trigger
+    if (soundChange > 0.20) {
 
-    soundThingSpeak(); //write to Thinkspeak which triggers Alexa
-    delay(15000);  //delay listening to any more sound or events for 15 seconds
+      soundThingSpeak();  //write to Thinkspeak which triggers Alexa
+      delay(15000);       //delay listening to any more sound or events for 15 seconds
+    }
 
+    //write data to mySQL via php
+    if (currentMillis - previousMillis >= mySQLinterval) {
+      previousMillis = currentMillis;  // save the last time you saved data
+      writeToMySQL("insertSoundValuePath");
+      // writeToMySQL();
+    }
   }
 
-  //write data to mySQL via php
-  if (currentMillis - previousMillis >= mySQLinterval) {
-    previousMillis = currentMillis;  // save the last time you saved data
-    writeToMySQL("insertSoundValuePath");
-    // writeToMySQL();
-  }
-
-  }
-
-// Decide how often or why I want to do this
+  // Decide how often or why I want to do this
   // readMySQLData();
 
 
@@ -229,11 +229,13 @@ BLYNK_WRITE(V0) {
   soundMonitoring = param.asInt();
 }
 
+
 // This function sends temperature every second to Virtual Pin 1.
 void writeBlynkSoundMonitor() {
   // Don't send more that 10 values per second.
   Blynk.virtualWrite(V0, soundMonitoring);
 }
+
 
 void writeBlynkTemp() {
   // Don't send more that 10 values per second.
@@ -241,27 +243,7 @@ void writeBlynkTemp() {
 }
 
 
-void writeToMySQL( String writeType ) {
-
-
-  // sound_value
-  // sound_monitoring
-  // temperature_value
-  // insertSoundValuePath
-  // insertTemperaturePath
-  // insertSoundMonitoringPath
-
-
-
-if ( writeType == "insertSoundValuePath") {
-  Serial.println("insertSoundValuePath");
-}
-else if ( writeType == "insertTemperaturePath") {
-  Serial.println("insertTemperaturePath");
-}
-else if ( writeType == "insertSoundMonitoringPath") {
-  Serial.println("insertSoundMonitoringPath");
-}
+void writeToMySQL(String writeType) {
 
   // connect to web server on port 80:
   if (wifiClient.connect(HOST_NAME, HTTP_PORT)) {
@@ -269,7 +251,13 @@ else if ( writeType == "insertSoundMonitoringPath") {
     Serial.println("Connected to server");
     // make a HTTP request:
     // send HTTP header
-    wifiClient.println(HTTP_METHOD + " " + insertSoundValuePath + "?sound=" + soundAvg + " HTTP/1.1");
+    if (writeType == "insertSoundValuePath") {
+      wifiClient.println(HTTP_METHOD + " " + insertSoundValuePath + "?sound=" + soundAvg + " HTTP/1.1");
+    } else if (writeType == "insertTemperaturePath") {
+      wifiClient.println(HTTP_METHOD + " " + insertTemperaturePath + "?temperature=" + temperature + " HTTP/1.1");
+    } else if (writeType == "insertSoundMonitoringPath") {
+      wifiClient.println(HTTP_METHOD + " " + insertSoundMonitoringPath + "?monitoring_value=" + soundMonitoring + " HTTP/1.1");
+    }
     wifiClient.println("Host: " + String(HOST_NAME));
     wifiClient.println("Connection: close");
     wifiClient.println();  // end HTTP header
@@ -291,6 +279,7 @@ else if ( writeType == "insertSoundMonitoringPath") {
   }
 }
 
+
 void readMySQLData() {
 
   httpclient.get(readPath);
@@ -300,6 +289,7 @@ void readMySQLData() {
   Serial.println("MySQL Response:");
   Serial.println(response);
 }
+
 
 void soundThingSpeak() {
   soundNotification = 1;
