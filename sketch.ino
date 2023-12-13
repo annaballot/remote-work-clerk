@@ -52,9 +52,10 @@ int soundValue = 0;
 int soundNotification = 0;
 int soundMonitoring = 0;
 int lastSoundMonitoring = 0;
+float mySQLSoundAvg;
 
 const long mySQLinterval = 60000;  // interval at which to upload average sound data to mySQL (milliseconds)
-const long tempInterval = 5000;    // interval at which to read and analyse temperature data (milliseconds)
+const long tempInterval = 60000;    // interval at which to read and analyse temperature data (milliseconds)
 
 
 
@@ -71,7 +72,7 @@ String insertSoundValuePath = "/workClerk/insert_sound_readings.php";
 String insertTemperaturePath = "/workClerk/insert_temperature_readings.php";
 String insertSoundMonitoringPath = "/workClerk/insert_sound_monitoring_readings.php";
 
-String readPath = "/workClerk/get_readings4.php";
+String sqlAvgSoundPath = "/workClerk/get_avg_sound.php";
 // String queryString = "?sound=28.2";
 
 HttpClient httpclient = HttpClient(wifiClient, HOST_NAME, HTTP_PORT);
@@ -104,6 +105,10 @@ void setup() {
 
   delay(1000);
   Serial.println("End of Setup");
+
+//get sound value average
+  readMySQLData();
+
 }
 
 
@@ -117,7 +122,6 @@ void setup() {
 //***************************************************************************************************************************************************************************
 
 void loop() {
-
 
   currentMillis = millis();  //get the current "time" (actually the number of milliseconds since the program started)
   soundValue = analogRead(sound_sensor);
@@ -139,12 +143,12 @@ void loop() {
     int gesture = APDS.readGesture();
 
     if (gesture == GESTURE_UP || gesture == GESTURE_DOWN || gesture == GESTURE_LEFT || gesture == GESTURE_RIGHT) {
-      // if ( currentMillis < 60000 ) {
-      //   Serial.println("Delay of 60sec before sound monitor works");
-      // } else {
+      if ( currentMillis < 60000 ) {
+        Serial.println("Delay of 60sec before sound monitor works");
+      } else {
       controlSoundMonitoring();
       writeToMySQL("insertSoundMonitoringPath");
-      // }
+      }
     }
   }
 
@@ -158,15 +162,24 @@ void loop() {
   if (lastSoundMonitoring == 1 && soundMonitoring == 0) {
     Serial.println("End Monitoring Sound");
     LEDoff();
-    writeBlynkSoundMonitor();
+    // writeBlynkSoundMonitor();
     delay(3000);
   }
   lastSoundMonitoring = soundMonitoring;
+
+
   if (soundMonitoring == 1) {
+
+if ( currentMillis < 180000 ) {
+  soundAvg = mySQLSoundAvg;
+}
+else {
+
 
     soundValueTotal = soundValueTotal + soundValue;
     numValues = numValues + 1;
     soundAvg = soundValueTotal / numValues;
+}
     soundChange = round(((soundValue - soundAvg) * 100) / soundAvg) / 100;
 
     //print some values
@@ -190,12 +203,8 @@ void loop() {
     if (currentMillis - previousMillis >= mySQLinterval) {
       previousMillis = currentMillis;  // save the last time you saved data
       writeToMySQL("insertSoundValuePath");
-      // writeToMySQL();
     }
   }
-
-  // Decide how often or why I want to do this
-  // readMySQLData();
 
 
   //Check if there's been a change in temperature warning
@@ -282,12 +291,27 @@ void writeToMySQL(String writeType) {
 
 void readMySQLData() {
 
-  httpclient.get(readPath);
+  httpclient.get(sqlAvgSoundPath);
 
   // read the response
   String response = httpclient.responseBody();
   Serial.println("MySQL Response:");
   Serial.println(response);
+
+// Response Format
+// {"avgSoundVal":"347.78758169934642"}
+
+  String responseModified = response;
+  responseModified.replace("{\"avgSoundVal\":\"","");
+  responseModified.replace("\"}","");
+  mySQLSoundAvg =  round(responseModified.toFloat());
+ 
+  Serial.println("MySQL Sound Average:");
+  Serial.println(mySQLSoundAvg);
+
+
+
+  
 }
 
 
