@@ -61,7 +61,7 @@ float soundChange;
 float soundChngThreshhold = 0.3;  //when sound is 30% larger than average, detects sound
 
 //temperature
-const float tempThreshold = 20.0;
+const float tempThreshold = 25.0;
 float temperature;
 int tempWarning = 0;
 int lastTempWarning = 0;
@@ -164,19 +164,18 @@ void loop() {
 
     // printSoundValues();  //For debugging only
 
-    //if the sound change is 10% more than the average, trigger
+    //if the sound change is 30% more than the average, trigger
     if (soundChange > soundChngThreshhold) {
       soundThingSpeak();  //write to Thinkspeak which triggers Alexa
       delay(15000);       //delay listening to any more sound or events for 15 seconds
     }
   }
 
-  //Check if there's been a change in temperature and send warning
-  checkTemperature();
-
-  //write data to mySQL via php
+  
+  //write data to mySQL via php & check the temperature
   if (currentMillis - previousMillis >= mySQLinterval) {
     previousMillis = currentMillis;  // save the last time you saved data
+    checkTemperature(); //Check if there's been a change in temperature and send warning. Only do this once per min as there is a slight delay otherwise, which affects the sound sensor
     writeToMySQL("insertTemperaturePath");
     if (soundMonitoring == 1) {
       writeToMySQL("insertSoundValuePath");
