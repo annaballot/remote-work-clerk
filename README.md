@@ -1,2 +1,2 @@
 # remote-work-clerk
-This IOT device helps workers to keep focused while remote working. During a long day at work, I often feel tired and my concentration goes. This could be improved by two things: taking more movement breaks and opening the window for fresh air.
+This IOT device helps remote workers by notifying them of a Teams call or notification when they are downstairs taking a well deserved break. It also monitors the temperature in the home office and reminds the worker to open the window for fresh air, to help with concentration.
